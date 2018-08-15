@@ -1,0 +1,4 @@
+include LICENSE
+include pysiral_product_tools/VERSION
+include requirements.txt
+recursive-include tests *.py

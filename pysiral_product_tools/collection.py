@@ -8,7 +8,6 @@ from pysiral.logging import DefaultLoggingClass
 from pysiral.iotools import ReadNC
 
 
-
 class L3ParameterCollection(DefaultLoggingClass):
 
     def __init__(self, variable_name, repo_dir=None, ctlg=None, squeeze_empty_dims=True, auxiliary_vars=[]):
