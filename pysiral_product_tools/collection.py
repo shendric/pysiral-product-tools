@@ -53,7 +53,8 @@ class L3ParameterCollection(DefaultLoggingClass):
                     auxvar = np.squeeze(auxvar)
                 l3par.set_auxiliary_var(auxiliary_var_name, auxvar)
             self._product[product.id] = l3par
-            self.log.info("Add product: %s"% product.id)
+            # self.log.debug("Add product: %s" % product.id)
+        self.log.info("Added %g product(s)" % len(self._product))
 
     def get_products(self, sort_by=None):
         if sort_by is None:
@@ -66,10 +67,60 @@ class L3ParameterCollection(DefaultLoggingClass):
         else:
             raise ValueError("Unknown sort variable")
 
-
     def get_total_mean(self, **kwargs):
         """ Return the collection wide average """
         return self._get_product_ids_mean(self.product_ids, **kwargs)
+
+    def get_grid_mean(self):
+        """
+        Return a list containing the mean of the main variable (one number per grid) for each period
+        :return: A list of mean values and their reference time [[datetime, mean value], .... ]
+        """
+        list = []
+        for prd_id in self.product_ids:
+            # Get the metadata for the product (for re
+            prd = self.get_by_product_id(prd_id)
+            list.append([prd.ctlg.ref_time, prd.get_variable_mean()])
+        # Return the result
+        return list
+
+    def get_grid_monthly_anomaly(self, return_val="anomaly"):
+        """
+        Get the monthly anomaly for each product (mean over all products)
+        :param: Keyword to indicate which value should be returned.
+                `anomaly` (default): A list of type [[ref_time, anomaly], ...] for each anomaly
+                `both`: Same as anomaly with added dictionary for monthly mean values {1: val, 2: val, ...}
+        :return: The return value determined by keyword `return_val`
+        """
+
+        # Get the number of month
+        months = set([prd.ctlg.ref_time.month for prd in self.products])
+
+        # Create a dictionary with mean value from available products per month
+        # NOTE: monthly grid mean -> The mean value for all products of the same month in the record (one number)
+        #       month mean grid -> The mean for each grid cell (grid) for one specific month)
+        monthly_grid_mean = dict()
+        for month_num in months:
+            product_ids = self.ctlg.get_month_products(month_num)
+            month_mean_grid = self._get_product_ids_mean(product_ids)
+            monthly_grid_mean[month_num] = np.nanmean(month_mean_grid)
+
+        # Get the mean values
+        grid_means = self.get_grid_mean()
+        monthly_anomalies = []
+
+        # Compute anomalies
+        for ref_time, mean_value in grid_means:
+            monthly_anomaly = mean_value - monthly_grid_mean[ref_time.month]
+            monthly_anomalies.append([ref_time, monthly_anomaly])
+
+        # Get the return value
+        return_value = [monthly_anomalies,]
+        if return_val == "both":
+            return_value.append(monthly_grid_mean)
+
+        return return_value
+
 
     def get_all_winters(self, anomaly=False, mean=False, **kwargs):
         """ Return all winter (oct - apr) grids as a list of lists
@@ -154,7 +205,6 @@ class L3ParameterCollection(DefaultLoggingClass):
         dims = [n_month]
         dim = dims.extend(self.grid_dims)
         grid_array = np.full(dims, np.nan)
-
 
         year_num = start_year
         for i, month_num in enumerate(winter_season_month):
@@ -256,6 +306,9 @@ class L3Parameter(DefaultLoggingClass):
             mask = self._masks[mask_name]
             grid[np.where(mask)] = np.nan
         return grid
+
+    def get_variable_mean(self):
+        return np.nanmean(self.variable)
 
     def _get_masked_variable(self):
         masked_variable = np.copy(self._variable)
