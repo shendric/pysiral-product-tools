@@ -227,7 +227,7 @@ class SIRALProductCatalog(DefaultLoggingClass):
         """
 
         # Construct time range 
-        time_range = get_winter_time_range(start_year)
+        time_range = self.get_winter_time_range(start_year)
 
         # Query time range
         product_files = self.query_overlap(time_range.start_dt, time_range.stop_dt)
@@ -336,9 +336,9 @@ class SIRALProductCatalog(DefaultLoggingClass):
 
     def _is_duplication(self, product_info):
         """ Tests if specified product is a duplicate to the current catalog """
-        
         # Condition 1: period exists in current catalog
-        period_exists = product_info.period_id
+        period_exists = product_info.period_id in self.period_ids
+        return period_exists
 
     @property
     def nc_files(self):
