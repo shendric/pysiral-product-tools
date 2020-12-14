@@ -13,7 +13,8 @@ import numpy as np
 
 from pysiral.iotools import ReadNC
 from pysiral.logging import DefaultLoggingClass
-from pysiral.config import TimeRangeRequest, MISSION_NAME_DICT
+from dateperiods import DatePeriod
+from pysiral import psrlcfg
 from pysiral.errorhandler import ErrorStatus
 
 
@@ -87,7 +88,8 @@ class SIRALProductCatalog(DefaultLoggingClass):
             ctlg {object} -- of type SIRALProductCatalog
         
         Keyword Arguments:
-            duplication {bool} -- Allows (True) / Prevents (False) duplicate entries (same platform, same period) in the merged catalog (default: {False})
+            duplication {bool} -- Allows (True) / Prevents (False) duplicate entries (same platform, same period)
+                                in the merged catalog (default: {False})
         
         Returns:
             
@@ -209,11 +211,11 @@ class SIRALProductCatalog(DefaultLoggingClass):
 
         return winter_ids
 
-
-    def get_winter_time_range(self, start_year):
+    @staticmethod
+    def get_winter_time_range(start_year):
         winter_start_tuple = [start_year, 10]
         winter_end_tuple = [start_year+1, 4]
-        time_range = TimeRangeRequest(winter_start_tuple, winter_end_tuple, period="custom")
+        time_range = DatePeriod(winter_start_tuple, winter_end_tuple)
         return time_range 
 
     def get_northern_winter_netcdfs(self, start_year):
@@ -240,7 +242,7 @@ class SIRALProductCatalog(DefaultLoggingClass):
         return product_files
 
     def get_time_range_ids(self, tcs, tce):
-        time_range = TimeRangeRequest(tcs, tce, period="custom")
+        time_range = DatePeriod(tcs, tce)
         product_ids = self.query_overlap(time_range.start_dt, time_range.stop_dt, return_value="ids")
         return product_ids
 
@@ -273,7 +275,7 @@ class SIRALProductCatalog(DefaultLoggingClass):
         for year in self.years:
             if year in years_to_include:
                 continue
-            time_range = TimeRangeRequest([year, month_num], [year, month_num])
+            time_range = DatePeriod([year, month_num], [year, month_num])
             tcs, tce = time_range.start_dt, time_range.stop_dt
             ids = [prd.id for prd in self.product_list if prd.has_overlap(tcs, tce) and prd.platform in platforms]
             n_products += len(ids)
@@ -315,7 +317,7 @@ class SIRALProductCatalog(DefaultLoggingClass):
         if self.auto_id:
             subfolders = self.repo_path.split(os.sep)
             try:
-                search  = [bool(re.search(self.processing_level, subfolder)) for subfolder in subfolders]
+                search = [bool(re.search(self.processing_level, subfolder)) for subfolder in subfolders]
                 index = search.index(True)
                 repo_id = subfolders[index-1]
             except:
@@ -528,7 +530,7 @@ class ProductMetadata(DefaultLoggingClass):
                 value = float(value)
 
             if attribute == "source_mission_id" and value is not None:
-                setattr(self, "platform", MISSION_NAME_DICT.get(value, None))
+                setattr(self, "platform", psrlcfg.platforms.get_name(value))
                 
             setattr(self, attribute, value)
 
