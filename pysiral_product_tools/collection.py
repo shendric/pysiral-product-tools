@@ -1,6 +1,6 @@
 import numpy as np
 
-from catalog import L3CProductCatalog
+from .catalog import L3CProductCatalog
 
 from pysiral.errorhandler import ErrorStatus
 from pysiral.filter import smooth_2darray
