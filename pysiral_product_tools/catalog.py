@@ -376,6 +376,10 @@ class SIRALProductCatalog(DefaultLoggingClass):
         return sorted(self._catalog.keys())
 
     @property
+    def duration(self):
+        return list(set([item.time_coverage_duration for item in self._catalog.values()]))
+
+    @property
     def period_ids(self):
         return [self._catalog[idstr].period_id for idstr in self.product_ids]
 
