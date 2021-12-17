@@ -68,10 +68,11 @@ class SIRALProductCatalog(DefaultLoggingClass):
         TODO: think of a way of making it reversible or return a catalog subset """
 
         # Search for products that have no overlap (including partial overal)
-        product_ids_not_in_subset = []
-        for product in self.product_list:
-            if not product.has_overlap(limit_tcs_dt, limit_tce_dt):
-                product_ids_not_in_subset.append(product.id)
+        product_ids_not_in_subset = [
+            product.id
+            for product in self.product_list
+            if not product.has_overlap(limit_tcs_dt, limit_tce_dt)
+        ]
 
         # Remove from Catalog
         msg = "Removed %g products from catalog" % len(product_ids_not_in_subset)
@@ -101,32 +102,27 @@ class SIRALProductCatalog(DefaultLoggingClass):
         # 1. argument need to be of type SIRALProductCatalog
         if not isinstance(ctlg, (L2PProductCatalog, L3CProductCatalog)):
             msg = "Invalid catalog (%s), must be from pysiral.catalog module"
-            msg = msg % (str(ctlg.__class__.__name__))
+            msg %= (str(ctlg.__class__.__name__))
             self.error.add_error("ctlg-invld-ctlg", msg)
             self.error.raise_on_error()
 
         # 2. Catalogs need to be of the same processing level (l2p, l3c, ....)
         if self.processing_level != ctlg.processing_level:
             msg = "Invalid processing level (%s) of new catalog, %s required for appending"
-            msg = msg % (str(ctlg.processing_level), str(self.processing_level))
+            msg %= (str(ctlg.processing_level), str(self.processing_level))
             self.error.add_error("ctlg-proclevel-mismatch", msg)
             self.error.raise_on_error()
 
         # Merge the catalogs
         for new_product in ctlg.product_list:
-            
+
             # Check if new product is duplication in current catalog
             is_duplication = self._is_duplication(new_product)
 
             # if duplication ok & is duplication -> add
-            if duplication and is_duplication:
+            if duplication and is_duplication or not is_duplication:
                 self._catalog[new_product.id] = new_product
 
-            # if not duplication -> add
-            elif not is_duplication:
-                self._catalog[new_product.id] = new_product
-
-            # don't add (is duplication and duplication not ok)
             else:
                 continue
 
@@ -150,13 +146,12 @@ class SIRALProductCatalog(DefaultLoggingClass):
         product_ids = [prd.id for prd in self.product_list if prd.has_coverage(dt)]
         product_path = [prd.path for prd in self.product_list if prd.has_coverage(dt)]
 
-        if return_value == "products":
-            result = product_path
-        elif return_value == "ids":
-            result = product_ids
+        if return_value == "ids":
+            return product_ids
+        elif return_value == "products":
+            return product_path
         else:
-            result = len(product_ids) > 0
-        return result
+            return len(product_ids) > 0
 
     def query_overlap(self, tcs, tce, return_value="path"):
         """ Searches the repository for products that have overlapping coverage
@@ -183,11 +178,14 @@ class SIRALProductCatalog(DefaultLoggingClass):
         # Search files
         product_ids = [prd.id for prd in self.product_list if prd.has_overlap(tcs, tce)]
         if return_value == "path":
-            product_path = [prd.path for prd in self.product_list if prd.has_overlap(tcs, tce)]
-            return product_path
+            return [prd.path for prd in self.product_list if prd.has_overlap(tcs, tce)]
         elif return_value == "period_id":
-            period_id = [prd.period_id for prd in self.product_list if prd.has_overlap(tcs, tce)]
-            return period_id
+            return [
+                prd.period_id
+                for prd in self.product_list
+                if prd.has_overlap(tcs, tce)
+            ]
+
         else:
             return product_ids
 
@@ -217,8 +215,7 @@ class SIRALProductCatalog(DefaultLoggingClass):
     def get_winter_time_range(start_year):
         winter_start_tuple = [start_year, 10]
         winter_end_tuple = [start_year+1, 4]
-        time_range = DatePeriod(winter_start_tuple, winter_end_tuple)
-        return time_range 
+        return DatePeriod(winter_start_tuple, winter_end_tuple)
 
     def get_northern_winter_netcdfs(self, start_year):
         """Returns a list for northern winter data for the period october through april
@@ -238,15 +235,16 @@ class SIRALProductCatalog(DefaultLoggingClass):
 
         # Reporting
         msg = "Found %g %s files for winter season %g/%g"
-        msg = msg % (len(product_files), self.processing_level, start_year, start_year+1)
+        msg %= (len(product_files), self.processing_level, start_year, start_year+1)
         self.log.info(msg)
 
         return product_files
 
     def get_time_range_ids(self, tcs, tce):
         time_range = DatePeriod(tcs, tce)
-        product_ids = self.query_overlap(time_range.start_dt, time_range.stop_dt, return_value="ids")
-        return product_ids
+        return self.query_overlap(
+            time_range.start_dt, time_range.stop_dt, return_value="ids"
+        )
 
     def get_month_products(self, month_num, exclude_years=None, platform="all"):
         """Returns a list all products that have coverage for a given month
@@ -262,17 +260,8 @@ class SIRALProductCatalog(DefaultLoggingClass):
         years = self.years
         product_ids = []
 
-        if platform == "all":
-            platforms = self.platforms
-        else:
-            platforms = []
-            platforms.append(platform)
-
-        if exclude_years is None:
-            years_to_include = []
-        else:
-            years_to_include = exclude_years
-
+        platforms = self.platforms if platform == "all" else [platform]
+        years_to_include = [] if exclude_years is None else exclude_years
         n_products = 0
         for year in self.years:
             if year in years_to_include:
@@ -286,7 +275,7 @@ class SIRALProductCatalog(DefaultLoggingClass):
         # Reporting
         msg = "Found %g %s files for %s"
         month_name = datetime.datetime(2000, month_num, 1).strftime("%B")
-        msg = msg % (n_products, self.processing_level, month_name)
+        msg %= (n_products, self.processing_level, month_name)
         self.log.info(msg)
 
         return product_ids
@@ -340,9 +329,7 @@ class SIRALProductCatalog(DefaultLoggingClass):
 
     def _is_duplication(self, product_info):
         """ Tests if specified product is a duplicate to the current catalog """
-        # Condition 1: period exists in current catalog
-        period_exists = product_info.period_id in self.period_ids
-        return period_exists
+        return product_info.period_id in self.period_ids
 
     @property
     def nc_files(self):
@@ -379,7 +366,7 @@ class SIRALProductCatalog(DefaultLoggingClass):
 
     @property
     def duration(self):
-        return list(set([item.time_coverage_duration for item in self._catalog.values()]))
+        return list({item.time_coverage_duration for item in self._catalog.values()})
 
     @property
     def period_ids(self):
@@ -502,7 +489,7 @@ class ProductMetadata(DefaultLoggingClass):
         super(ProductMetadata, self).__init__(self.__class__.__name__)
 
         self.path = path
-        self.unique_str = str(uuid.uuid4())[0:8]
+        self.unique_str = str(uuid.uuid4())[:8]
 
         if target_processing_level in self.VALID_PROCESSING_LEVELS or target_processing_level is None:
             self._targ_proc_lvl = target_processing_level
@@ -518,7 +505,7 @@ class ProductMetadata(DefaultLoggingClass):
         has_platform = False
 
         for attribute in self.NC_PRODUCT_ATTRIBUTES:
-            
+
             # Extract value from netcdf global attributes
             try:
                 value = getattr(nc, attribute)
@@ -537,7 +524,7 @@ class ProductMetadata(DefaultLoggingClass):
 
             if attribute == "source_mission_id" and value is not None:
                 setattr(self, "platform", psrlcfg.platforms.get_name(value))
-                
+
             setattr(self, attribute, value)
 
     def has_coverage(self, dt):
@@ -549,8 +536,7 @@ class ProductMetadata(DefaultLoggingClass):
         Returns:
             [bool] -- A True/False flag
         """
-        flag = dt >= self.time_coverage_start and dt <= self.time_coverage_end
-        return flag
+        return dt >= self.time_coverage_start and dt <= self.time_coverage_end
 
     def has_overlap(self, tcs, tce):
         """Test if product has overlap with period defined by start & end datetime
@@ -568,8 +554,7 @@ class ProductMetadata(DefaultLoggingClass):
             raise ValueError("Invalid overlap test: tce <= tcs")
 
         no_coverage = tce <= self.time_coverage_start or tcs >= self.time_coverage_end
-        flag = not no_coverage
-        return flag
+        return not no_coverage
 
     def _parse_datetime_definition(self, value):
         """Converts the string representation of a date & time into a 
@@ -639,8 +624,7 @@ class ProductMetadata(DefaultLoggingClass):
         identifier = (
             self.processing_level, str(self.platform),
             self.period_id, self.unique_str)
-        idstr = "%s-%s-%s-%s" % identifier
-        return idstr
+        return "%s-%s-%s-%s" % identifier
 
     @property
     def tcs(self):
@@ -662,8 +646,7 @@ class ProductMetadata(DefaultLoggingClass):
     def period_id(self):
         """ Generates a period id """
         identifier = (self.tcs_label, self.tce_label, self.time_coverage_duration)
-        period_id = "%sT%s-%s" % identifier
-        return period_id
+        return "%sT%s-%s" % identifier
 
     @property
     def ref_time(self):
@@ -675,13 +658,11 @@ class ProductMetadata(DefaultLoggingClass):
         """ Determine the hemisphere based on the geospatial attributes """
 
         if self.geospatial_lat_min > 0.0:
-            hemisphere = "north"
+            return "north"
         elif self.geospatial_lat_max < 0.0:
-            hemisphere = "south"
+            return "south"
         else:
-            hemisphere = "global"
-
-        return hemisphere
+            return "global"
 
 
 class ReadNC(object):
@@ -692,6 +673,7 @@ class ReadNC(object):
     def __init__(self, filename, verbose=False, autoscale=True,
                  nan_fill_value=False, global_attrs_only=False):
         self.error = ErrorStatus()
+        self.keys = []
         self.time_def = NCDateNumDef()
         self.parameters = []
         self.attributes = []
@@ -713,17 +695,14 @@ class ReadNC(object):
 
     def read_content(self):
 
-        self.keys = []
-
         # Open the file
         try:
             f = Dataset(self.filename)
+            f.set_auto_scale(self.autoscale)
         except RuntimeError:
             msg = "Cannot read netCDF file: %s" % self.filename
             self.error.add_error("nc-runtime-error", msg)
             self.error.raise_on_error()
-
-        f.set_auto_scale(self.autoscale)
 
         # Get the global attributes
         for attribute_name in f.ncattrs():
