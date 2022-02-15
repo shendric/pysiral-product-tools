@@ -16,8 +16,6 @@ from netCDF4 import Dataset, num2date
 
 from dateperiods import DatePeriod
 from pysiral.output import NCDateNumDef
-from pysiral import psrlcfg
-from pysiral.errorhandler import ErrorStatus
 
 
 class SIRALProductCatalog(object):
@@ -30,7 +28,6 @@ class SIRALProductCatalog(object):
                  repo_id=None,
                  processing_level=None,
                  period_id_level=None):
-        self.error = ErrorStatus(caller_id=self.__class__.__name__)
         self.repo_path = repo_path
         self._repo_id = repo_id
         if repo_id is not None:
@@ -50,7 +47,8 @@ class SIRALProductCatalog(object):
             raise_on_failure {bool} -- Raise an SystemExi exception if a check is negative (default: {True})
         
         Returns:
-            [bool list] -- flag list with check results (True: check passed) Only returned when `raise` keyword is set to `False`)
+            [bool list] -- flag list with check results (True: check passed)
+                           Only returned when `raise` keyword is set to `False`
         """
 
         check_passed = np.zeros(np.shape(check_list), dtype=bool)
@@ -69,11 +67,12 @@ class SIRALProductCatalog(object):
         return check_passed
 
     def limit_to_period(self, limit_tcs_dt, limit_tce_dt):
-        """ Removes all catalog entries that have no overlap with start 
-        and end times (not reversible) 
-        TODO: think of a way of making it reversible or return a catalog subset """
+        """
+        Removes all catalog entries that have no overlap with start and end times (not reversible)
+        TODO: think of a way of making it reversible or return a catalog subset
+        """
 
-        # Search for products that have no overlap (including partial overal)
+        # Search for products that have no overlap (including partial overall)
         product_ids_not_in_subset = [
             product.id
             for product in self.product_list
@@ -106,18 +105,16 @@ class SIRALProductCatalog(object):
 
         # Perform Consistency checks
         # 1. argument need to be of type SIRALProductCatalog
-        if not isinstance(ctlg, (L2PProductCatalog, L3CProductCatalog)):
+        if not isinstance(ctlg, (L2IProductCatalog, L2PProductCatalog, L3CProductCatalog)):
             msg = "Invalid catalog (%s), must be from pysiral.catalog module"
             msg %= (str(ctlg.__class__.__name__))
-            self.error.add_error("ctlg-invld-ctlg", msg)
-            self.error.raise_on_error()
+            raise ValueError(msg)
 
         # 2. Catalogs need to be of the same processing level (l2p, l3c, ....)
         if self.processing_level != ctlg.processing_level:
             msg = "Invalid processing level (%s) of new catalog, %s required for appending"
             msg %= (str(ctlg.processing_level), str(self.processing_level))
-            self.error.add_error("ctlg-proclevel-mismatch", msg)
-            self.error.raise_on_error()
+            raise ValueError(msg)
 
         # Merge the catalogs
         for new_product in ctlg.product_list:
@@ -263,7 +260,6 @@ class SIRALProductCatalog(object):
         """
 
         # Query time range
-        years = self.years
         product_ids = []
 
         platforms = self.platforms if platform == "all" else [platform]
@@ -320,7 +316,7 @@ class SIRALProductCatalog(object):
                 search = [bool(re.search(self.processing_level, subfolder)) for subfolder in subfolders]
                 index = search.index(True)
                 repo_id = subfolders[index-1]
-            except:
+            except IndexError:
                 logger.warning("Auto id failed, did not find `%s` in list of subfolders" % self.processing_level)
                 repo_id = None
             self._repo_id = repo_id
@@ -333,8 +329,9 @@ class SIRALProductCatalog(object):
             nc_access_times.append(product_info.nc_access_time)
             self._catalog[product_info.id] = product_info
         t1 = time.process_time()
-        logger.info("... done in %.1f seconds" % (t1-t0))
-        logger.info("... average netCDF access time: %.4f sec" % np.mean(nc_access_times))
+        if self.n_product_files > 0:
+            logger.info("... done in %.1f seconds" % (t1-t0))
+            logger.info("... average netCDF access time: %.4f sec" % np.mean(nc_access_times))
 
     def _is_duplication(self, product_info):
         """ Tests if specified product is a duplicate to the current catalog """
@@ -434,7 +431,7 @@ class SIRALProductCatalog(object):
 
     @property
     def tcs(self):
-        """ Abbrevivation for self.coverage_start """
+        """ Abbrevivation for self.time_coverage_start """
         return self.time_coverage_start
 
     @property
@@ -508,6 +505,7 @@ class ProductMetadata(object):
                                              the case of a mismatch (default: {None})
         """
         self.path = path
+        self._attr_dict = {}
         self.unique_str = str(uuid.uuid4())[:8]
 
         if target_processing_level in self.VALID_PROCESSING_LEVELS or target_processing_level is None:
@@ -520,8 +518,6 @@ class ProductMetadata(object):
         nc = ReadNC(self.path, global_attrs_only=True)
         t1 = time.process_time()
         self.nc_access_time = t1-t0
-
-        has_platform = False
 
         for attribute in self.NC_PRODUCT_ATTRIBUTES:
 
@@ -541,10 +537,7 @@ class ProductMetadata(object):
             if re.search("geospatial", attribute):
                 value = float(value)
 
-            if attribute == "source_mission_id" and value is not None:
-                setattr(self, "platform", psrlcfg.platforms.get_name(value))
-
-            setattr(self, attribute, value)
+            self._attr_dict[attribute] = value
 
     def has_coverage(self, dt):
         """Test if datetime object is covered by product time coverage
@@ -610,7 +603,7 @@ class ProductMetadata(object):
         """
 
         # Make sure the value for processing level is only the id
-        # search for the occurance of all valid processing levels in the processing_level attribute
+        # search for the occurrence of all valid processing levels in the processing_level attribute
         pl_match = [pl in str(value).lower() for pl in self.VALID_PROCESSING_LEVELS]
         try: 
             index = pl_match.index(True)
@@ -683,6 +676,17 @@ class ProductMetadata(object):
         else:
             return "global"
 
+    def __getattr__(self, item):
+        """
+        Modify the attribute getter to provide a shortcut to the data content
+        :param item: Name of the parameter
+        :return:
+        """
+        if item in list(self._attr_dict.keys()):
+            return self._attr_dict[item]
+        else:
+            raise AttributeError()
+
 
 class ReadNC(object):
     """
@@ -691,7 +695,6 @@ class ReadNC(object):
     """
     def __init__(self, filename, verbose=False, autoscale=True,
                  nan_fill_value=False, global_attrs_only=False):
-        self.error = ErrorStatus()
         self.keys = []
         self.time_def = NCDateNumDef()
         self.parameters = []
@@ -707,10 +710,6 @@ class ReadNC(object):
 
     def read_globals(self):
         pass
-#        self.gobal_attributes = {}
-#        f = Dataset(self.filename)
-#        print f.ncattrs()
-#        f.close()
 
     def read_content(self):
 
@@ -718,10 +717,8 @@ class ReadNC(object):
         try:
             f = Dataset(self.filename)
             f.set_auto_scale(self.autoscale)
-        except RuntimeError:
-            msg = "Cannot read netCDF file: %s" % self.filename
-            self.error.add_error("nc-runtime-error", msg)
-            self.error.raise_on_error()
+        except RuntimeError as e:
+            raise IOError("Cannot read netCDF file: %s" % self.filename) from e
 
         # Get the global attributes
         for attribute_name in f.ncattrs():
@@ -746,7 +743,7 @@ class ReadNC(object):
                 try:
                     is_float = variable.dtype in ["float32", "float64"]
                     has_mask = hasattr(variable, "mask")
-                except:
+                except AttributeError:
                     is_float, has_mask = False, False
 
                 if self.nan_fill_value and has_mask and is_float:
