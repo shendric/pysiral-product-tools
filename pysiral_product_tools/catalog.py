@@ -10,28 +10,34 @@ import time
 import datetime
 import dateutil
 import numpy as np
+from loguru import logger
 
 from netCDF4 import Dataset, num2date
 
-from pysiral.logging import DefaultLoggingClass
 from dateperiods import DatePeriod
 from pysiral.output import NCDateNumDef
 from pysiral import psrlcfg
 from pysiral.errorhandler import ErrorStatus
 
 
-class SIRALProductCatalog(DefaultLoggingClass):
+class SIRALProductCatalog(object):
     """ Parent catalog class for product catalogs for different
     data processing levels """
 
-    def __init__(self, repo_path, auto_id=True, repo_id=None):
-        super(SIRALProductCatalog, self).__init__(self.__class__.__name__)
+    def __init__(self,
+                 repo_path,
+                 auto_id=True,
+                 repo_id=None,
+                 processing_level=None,
+                 period_id_level=None):
         self.error = ErrorStatus(caller_id=self.__class__.__name__)
         self.repo_path = repo_path
         self._repo_id = repo_id
         if repo_id is not None:
             auto_id = False
         self.auto_id = auto_id
+        self.processing_level = processing_level
+        self.period_id_level = period_id_level
         self._catalog = {}
 
     def run_checks(self, check_list, raise_on_failure=True):
@@ -53,11 +59,11 @@ class SIRALProductCatalog(DefaultLoggingClass):
             try: 
                 check_passed[index] = getattr(self, check)
             except AttributeError:
-                self.log.error("invalid check: %s" % str(check))
+                logger.error("invalid check: %s" % str(check))
                 check_passed[index] = False
             finally:
                 if raise_on_failure and not check_passed[index]:
-                    self.log.error("failed check: %s" % str(check))
+                    logger.error("failed check: %s" % str(check))
                     sys.exit()
 
         return check_passed
@@ -76,7 +82,7 @@ class SIRALProductCatalog(DefaultLoggingClass):
 
         # Remove from Catalog
         msg = "Removed %g products from catalog" % len(product_ids_not_in_subset)
-        self.log.info(msg)
+        logger.info(msg)
         for product_id in product_ids_not_in_subset:
             self._catalog.pop(product_id, None)
 
@@ -206,7 +212,7 @@ class SIRALProductCatalog(DefaultLoggingClass):
         winter_ids = []
         for winter_start_year in np.arange(first_year, last_year+1):
             time_range = self.get_winter_time_range(winter_start_year)
-            ids = self.query_overlap(time_range.start_dt, time_range.stop_dt, return_value=return_value)
+            ids = self.query_overlap(time_range.tcs.dt, time_range.tce.dt, return_value=return_value)
             winter_ids.append(ids)
 
         return winter_ids
@@ -231,19 +237,19 @@ class SIRALProductCatalog(DefaultLoggingClass):
         time_range = self.get_winter_time_range(start_year)
 
         # Query time range
-        product_files = self.query_overlap(time_range.start_dt, time_range.stop_dt)
+        product_files = self.query_overlap(time_range.tcs.dt, time_range.tce.dt)
 
         # Reporting
         msg = "Found %g %s files for winter season %g/%g"
         msg %= (len(product_files), self.processing_level, start_year, start_year+1)
-        self.log.info(msg)
+        logger.info(msg)
 
         return product_files
 
     def get_time_range_ids(self, tcs, tce):
         time_range = DatePeriod(tcs, tce)
         return self.query_overlap(
-            time_range.start_dt, time_range.stop_dt, return_value="ids"
+            time_range.tcs.dt, time_range.tce.dt, return_value="ids"
         )
 
     def get_month_products(self, month_num, exclude_years=None, platform="all"):
@@ -267,7 +273,7 @@ class SIRALProductCatalog(DefaultLoggingClass):
             if year in years_to_include:
                 continue
             time_range = DatePeriod([year, month_num], [year, month_num])
-            tcs, tce = time_range.start_dt, time_range.stop_dt
+            tcs, tce = time_range.tcs.dt, time_range.tce.dt
             ids = [prd.id for prd in self.product_list if prd.has_overlap(tcs, tce) and prd.platform in platforms]
             n_products += len(ids)
             product_ids.extend(ids)
@@ -276,7 +282,7 @@ class SIRALProductCatalog(DefaultLoggingClass):
         msg = "Found %g %s files for %s"
         month_name = datetime.datetime(2000, month_num, 1).strftime("%B")
         msg %= (n_products, self.processing_level, month_name)
-        self.log.info(msg)
+        logger.info(msg)
 
         return product_ids
 
@@ -303,7 +309,10 @@ class SIRALProductCatalog(DefaultLoggingClass):
         nc_files = self.nc_files
 
         # Create the catalog entries as dictionary with product id as keys
-        self.log.info("Catalogizing %s repository: %s (%g files)" % (self.processing_level, str(self.repo_path), len(nc_files)))
+        logger.info(
+            'Catalogizing %s repository: %s (%g files)'
+            % (self.processing_level, str(self.repo_path), len(nc_files))
+        )
 
         if self.auto_id:
             subfolders = self.repo_path.split(os.sep)
@@ -312,20 +321,20 @@ class SIRALProductCatalog(DefaultLoggingClass):
                 index = search.index(True)
                 repo_id = subfolders[index-1]
             except:
-                self.log.warning("Auto id failed, did not find `%s` in list of subfolders" % (self.processing_level))
+                logger.warning("Auto id failed, did not find `%s` in list of subfolders" % self.processing_level)
                 repo_id = None
             self._repo_id = repo_id
-            self.log.info("%s repository ID: %s" % (self.processing_level, str(self.repo_id)))
-        
+            logger.info("%s repository ID: %s" % (self.processing_level, str(self.repo_id)))
+
         nc_access_times = []
-        t0 = time.clock()
+        t0 = time.process_time()
         for nc_file in self.nc_files:
             product_info = ProductMetadata(nc_file, target_processing_level=self.processing_level)
             nc_access_times.append(product_info.nc_access_time)
             self._catalog[product_info.id] = product_info
-        t1 = time.clock()
-        self.log.info("... done in %.1f seconds" % (t1-t0))
-        self.log.info("... average netCDF access time: %.4f sec" % np.mean(nc_access_times))
+        t1 = time.process_time()
+        logger.info("... done in %.1f seconds" % (t1-t0))
+        logger.info("... average netCDF access time: %.4f sec" % np.mean(nc_access_times))
 
     def _is_duplication(self, product_info):
         """ Tests if specified product is a duplicate to the current catalog """
@@ -340,8 +349,11 @@ class SIRALProductCatalog(DefaultLoggingClass):
         """
         nc_files = []
         for root, dirnames, filenames in os.walk(self.repo_path):
-            for filename in fnmatch.filter(filenames, "*.nc"):
-                nc_files.append(os.path.join(root, filename))
+            nc_files.extend(
+                os.path.join(root, filename)
+                for filename in fnmatch.filter(filenames, "*.nc")
+            )
+
         return sorted(nc_files)
 
     @property
@@ -436,15 +448,26 @@ class SIRALProductCatalog(DefaultLoggingClass):
         return self.time_coverage_end
 
 
+class L2IProductCatalog(SIRALProductCatalog):
+    """Catalog class for L3C product repositories
+
+    Arguments:
+            repo_path {str} -- path to repository"""
+
+    def __init__(self, *args, **kwargs):
+        kwargs.update(processing_level="l2i", period_id_level="daily")
+        super(L2IProductCatalog, self).__init__(*args, **kwargs)
+        self._catalogize()
+
+
 class L2PProductCatalog(SIRALProductCatalog):
     """Catalog class for L2P product repositories
 
     Arguments:
             repo_path {str} -- path to repository"""
-    
-    processing_level = "l2p"
-    
+
     def __init__(self, *args, **kwargs):
+        kwargs.update(rocessing_level="l2p")
         super(L2PProductCatalog, self).__init__(*args, **kwargs)
         self._catalogize()
 
@@ -454,16 +477,14 @@ class L3CProductCatalog(SIRALProductCatalog):
 
     Arguments:
             repo_path {str} -- path to repository"""
-    
-    processing_level = "l3c"
-    period_id_level = "daily"
-    
+
     def __init__(self, *args, **kwargs):
+        kwargs.update(processing_level="l3c", period_id_level="daily")
         super(L3CProductCatalog, self).__init__(*args, **kwargs)
         self._catalogize()
 
 
-class ProductMetadata(DefaultLoggingClass):
+class ProductMetadata(object):
     """Metadata data container for pysiral product files."""
 
     VALID_PROCESSING_LEVELS = ["l2i", "l2p", "l3c"]
@@ -486,8 +507,6 @@ class ProductMetadata(DefaultLoggingClass):
                                              a specific processing level will cause an exception in 
                                              the case of a mismatch (default: {None})
         """
-        super(ProductMetadata, self).__init__(self.__class__.__name__)
-
         self.path = path
         self.unique_str = str(uuid.uuid4())[:8]
 
@@ -497,9 +516,9 @@ class ProductMetadata(DefaultLoggingClass):
             raise ValueError("Invalid target processing level: %s" % str(target_processing_level))
 
         # Fetch attributes (if possible) from netcdf
-        t0 = time.clock()
+        t0 = time.process_time()
         nc = ReadNC(self.path, global_attrs_only=True)
-        t1 = time.clock()
+        t1 = time.process_time()
         self.nc_access_time = t1-t0
 
         has_platform = False
@@ -536,7 +555,7 @@ class ProductMetadata(DefaultLoggingClass):
         Returns:
             [bool] -- A True/False flag
         """
-        return dt >= self.time_coverage_start and dt <= self.time_coverage_end
+        return self.time_coverage_start <= dt <= self.time_coverage_end
 
     def has_overlap(self, tcs, tce):
         """Test if product has overlap with period defined by start & end datetime
@@ -556,18 +575,19 @@ class ProductMetadata(DefaultLoggingClass):
         no_coverage = tce <= self.time_coverage_start or tcs >= self.time_coverage_end
         return not no_coverage
 
-    def _parse_datetime_definition(self, value):
-        """Converts the string representation of a date & time into a 
+    @staticmethod
+    def _parse_datetime_definition(value):
+        """Converts the string representation of a date & time into a
         datetime instance
-        
+
         Arguments:
             value {str} -- [description]
-        
+
         Returns:
             [datetime] -- [description]
         """
         d = dateutil.parser.parse(value)
-        
+
         # Test if datetime is timezone aware
         # (true) -> remove time zone
         if d.tzinfo is not None and d.tzinfo.utcoffset(d) is not None:
@@ -601,7 +621,7 @@ class ProductMetadata(DefaultLoggingClass):
 
         # Check if processing level in file matches target processing level
         value = self.VALID_PROCESSING_LEVELS[index]
-        if value != self._targ_proc_lvl and self._targ_proc_lvl is not None:
+        if value != self._targ_proc_lvl is not None:
             msg = "Invalid product processing level: %s (target: %s)"
             raise ValueError(msg % (value, self._targ_proc_lvl))
 
@@ -656,7 +676,6 @@ class ProductMetadata(DefaultLoggingClass):
     @property
     def hemisphere(self):
         """ Determine the hemisphere based on the geospatial attributes """
-
         if self.geospatial_lat_min > 0.0:
             return "north"
         elif self.geospatial_lat_max < 0.0:
