@@ -3,3 +3,4 @@ setuptools~=59.2.0
 python-dateutil~=2.8.2
 loguru~=0.5.3
 netcdf4~=1.5.7
+tinydb

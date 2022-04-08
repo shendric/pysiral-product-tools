@@ -9,9 +9,9 @@ import uuid
 import time
 import datetime
 import dateutil
+import tinydb
 import numpy as np
 from loguru import logger
-
 from netCDF4 import Dataset, num2date
 
 from dateperiods import DatePeriod
@@ -128,6 +128,17 @@ class SIRALProductCatalog(object):
 
             else:
                 continue
+
+    def to_tinydb(self, filepath):
+        """
+        Write the content of the catalog to a tinydb json file
+
+        :param filepath:
+
+        :return:
+        """
+        db = tinydb.TinyDB(filepath)
+        db.insert_multiple(item.tinydb_document for item in self.product_list)
 
     def query_datetime(self, dt, return_value="bool"):
         """ Searches the repository for products for a given datetime
@@ -539,6 +550,8 @@ class ProductMetadata(object):
 
             self._attr_dict[attribute] = value
 
+        self._attr_dict["path"] = self.path
+
     def has_coverage(self, dt):
         """Test if datetime object is covered by product time coverage
         
@@ -675,6 +688,17 @@ class ProductMetadata(object):
             return "south"
         else:
             return "global"
+
+    @property
+    def tinydb_document(self):
+        """ Returns a tinydb document of this class """
+        attr_dict = self._attr_dict.copy()
+        for key, value in attr_dict.items():
+            if isinstance(value, datetime.datetime):
+                attr_dict[key] = value.isoformat()
+        attr_dict["id"] = self.id
+        return attr_dict
+
 
     def __getattr__(self, item):
         """
