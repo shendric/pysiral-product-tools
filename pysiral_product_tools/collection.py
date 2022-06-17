@@ -1,18 +1,17 @@
 import numpy as np
 
+from loguru import logger
+
 from .catalog import L3CProductCatalog
 
 from pysiral.errorhandler import ErrorStatus
 from pysiral.filter import smooth_2darray
-from pysiral.logging import DefaultLoggingClass
 from pysiral.iotools import ReadNC
 
 
-class L3ParameterCollection(DefaultLoggingClass):
+class L3ParameterCollection(object):
 
     def __init__(self, variable_name, repo_dir=None, ctlg=None, squeeze_empty_dims=True, auxiliary_vars=[]):
-
-        super(L3ParameterCollection, self).__init__(self.__class__.__name__)
 
         # Name of the parameter from the netCDF files
         self.variable_name = variable_name
@@ -54,7 +53,7 @@ class L3ParameterCollection(DefaultLoggingClass):
                 l3par.set_auxiliary_var(auxiliary_var_name, auxvar)
             self._product[product.id] = l3par
             # self.log.debug("Add product: %s" % product.id)
-        self.log.info("Added %g product(s)" % len(self._product))
+        logger.info("Added %g product(s)" % len(self._product))
 
     def get_products(self, sort_by=None):
         if sort_by is None:
@@ -285,7 +284,7 @@ class L3ParameterCollection(DefaultLoggingClass):
 
 
 
-class L3Parameter(DefaultLoggingClass):
+class L3Parameter(object):
 
     def __init__(self, variable_name, variable, ctlg):
         self.variable_name = variable_name
@@ -334,7 +333,7 @@ class L3Parameter(DefaultLoggingClass):
         return sorted(self._masks.keys())
 
 
-class L3ParameterPair(DefaultLoggingClass):
+class L3ParameterPair(object):
 
     def __init__(self, param_a, param_b):
         self.param_a = param_a
@@ -377,11 +376,9 @@ class L3ParameterPair(DefaultLoggingClass):
         return self.param_a.ctlg.ref_time
 
 
-class L3ParamPairCollection(DefaultLoggingClass):
+class L3ParamPairCollection(object):
 
     def __init__(self, collect_a, collect_b):
-
-        super(L3ParamPairCollection, self).__init__(self.__class__.__name__)
 
         # Init parameters
         self._l3_pairs = {}
