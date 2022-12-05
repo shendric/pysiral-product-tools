@@ -140,12 +140,13 @@ class SIRALProductCatalog(object):
         db = tinydb.TinyDB(filepath)
         db.insert_multiple(item.tinydb_document for item in self.product_list)
 
-    def query_datetime(self, dt, return_value="bool"):
+    def query_datetime(self, dt, return_value="bool", center_time_only=False):
         """ Searches the repository for products for a given datetime
         
         Arguments:
             dt {datetime} -- datetime definition for the query
-        
+            center_time_only {boo} -- Check only the data of the center time
+
         Keyword Arguments:
             return_value {str} -- Defines the type of output: `bool` for True/False flag, `products` for
                                   product path (list) and id for ids (default: {"bool"})
@@ -157,8 +158,12 @@ class SIRALProductCatalog(object):
         if not isinstance(dt, datetime.datetime):
             raise ValueError("Argument dt needs to be datetime (was: %s)" % (type(dt)))
 
-        product_ids = [prd.id for prd in self.product_list if prd.has_coverage(dt)]
-        product_path = [prd.path for prd in self.product_list if prd.has_coverage(dt)]
+        if center_time_only:
+            product_ids = [prd.id for prd in self.product_list if prd.ref_time.date() == dt.date()]
+            product_path = [prd.path for prd in self.product_list if prd.ref_time.date() == dt.date()]
+        else:
+            product_ids = [prd.id for prd in self.product_list if prd.has_coverage(dt)]
+            product_path = [prd.path for prd in self.product_list if prd.has_coverage(dt)]
 
         if return_value == "ids":
             return product_ids
