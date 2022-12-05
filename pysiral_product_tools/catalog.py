@@ -492,10 +492,22 @@ class L3CProductCatalog(SIRALProductCatalog):
         self._catalogize()
 
 
+class L4ProductCatalog(SIRALProductCatalog):
+    """Catalog class for L4 product repositories
+
+    Arguments:
+            repo_path {str} -- path to repository"""
+
+    def __init__(self, *args, **kwargs):
+        kwargs.update(processing_level="l4", period_id_level="daily")
+        super(L4ProductCatalog, self).__init__(*args, **kwargs)
+        self._catalogize()
+
+
 class ProductMetadata(object):
     """Metadata data container for pysiral product files."""
 
-    VALID_PROCESSING_LEVELS = ["l2i", "l2p", "l3c"]
+    VALID_PROCESSING_LEVELS = ["l2i", "l2p", "l3c", "l4"]
     VALID_CDM_DATA_LEVEL = ["Trajectory", "Grid"]
     NC_PRODUCT_ATTRIBUTES = [
         "processing_level", "product_version", "cdm_data_level", "platform", 
