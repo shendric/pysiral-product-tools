@@ -15,7 +15,17 @@ from loguru import logger
 from netCDF4 import Dataset, num2date
 
 from dateperiods import DatePeriod
-from pysiral.output import NCDateNumDef
+
+
+class NCDateNumDef(object):
+    """
+    Holds definition for datetime conversion to numbers and vice versa
+    for netCDF operations
+    """
+
+    def __init__(self, units: str = "seconds since 1970-01-01") -> None:
+        self.units = units
+        self.calendar = "standard"
 
 
 class SIRALProductCatalog(object):
@@ -39,13 +49,13 @@ class SIRALProductCatalog(object):
 
     def run_checks(self, check_list, raise_on_failure=True):
         """Runs a list of built-in queries. Valid checks: `is_single_hemisphere`, `is_single_version`
-        
+
         Arguments:
             check_list {str list} -- list of checks to run
-        
+
         Keyword Arguments:
             raise_on_failure {bool} -- Raise an SystemExi exception if a check is negative (default: {True})
-        
+
         Returns:
             [bool list] -- flag list with check results (True: check passed)
                            Only returned when `raise` keyword is set to `False`
@@ -54,7 +64,7 @@ class SIRALProductCatalog(object):
         check_passed = np.zeros(np.shape(check_list), dtype=bool)
         for index, check in enumerate(check_list):
             check_passed[index] = getattr(self, check)
-            try: 
+            try:
                 check_passed[index] = getattr(self, check)
             except AttributeError:
                 logger.error("invalid check: %s" % str(check))
@@ -89,18 +99,18 @@ class SIRALProductCatalog(object):
         return self._catalog.get(product_id, None)
 
     def append(self, ctlg, duplication=False):
-        """Add the information from another catalog with rules for handling of duplicates 
+        """Add the information from another catalog with rules for handling of duplicates
         (same period, same mission)
-        
+
         Arguments:
             ctlg {object} -- of type SIRALProductCatalog
-        
+
         Keyword Arguments:
             duplication {bool} -- Allows (True) / Prevents (False) duplicate entries (same platform, same period)
                                 in the merged catalog (default: {False})
-        
+
         Returns:
-            
+
         """
 
         # Perform Consistency checks
@@ -142,7 +152,7 @@ class SIRALProductCatalog(object):
 
     def query_datetime(self, dt, return_value="bool", center_time_only=False):
         """ Searches the repository for products for a given datetime
-        
+
         Arguments:
             dt {datetime} -- datetime definition for the query
             center_time_only {boo} -- Check only the data of the center time
@@ -150,7 +160,7 @@ class SIRALProductCatalog(object):
         Keyword Arguments:
             return_value {str} -- Defines the type of output: `bool` for True/False flag, `products` for
                                   product path (list) and id for ids (default: {"bool"})
-        
+
         Returns:
             [bool or str] -- see keyword `return`
         """
@@ -175,15 +185,15 @@ class SIRALProductCatalog(object):
     def query_overlap(self, tcs, tce, return_value="path"):
         """ Searches the repository for products that have overlapping coverage
         with a given time range
-        
+
         Arguments:
             tcs {datetime} -- time coverage start of search period
             tce {datetime} -- time coverage end of search period
-        
+
         Keyword Arguments:
             return_value {str} -- Defines the type of output: `bool` for True/False flag and `products` for
                                   product path (list) (default: {"bool"})
-        
+
         Returns:
             [bool or str] -- see keyword `return`
         """
@@ -238,15 +248,15 @@ class SIRALProductCatalog(object):
 
     def get_northern_winter_netcdfs(self, start_year):
         """Returns a list for northern winter data for the period october through april
-        
+
         Arguments:
             start_year {int} -- start year for the winter (yyyy-oct till yyyy+1-apr)
 
-        Returns: 
+        Returns:
             product_files {str list} -- list of files for specified winter season
         """
 
-        # Construct time range 
+        # Construct time range
         time_range = self.get_winter_time_range(start_year)
 
         # Query time range
@@ -267,11 +277,11 @@ class SIRALProductCatalog(object):
 
     def get_month_products(self, month_num, exclude_years=None, platform="all"):
         """Returns a list all products that have coverage for a given month
-        
+
         Arguments:
             month {int} -- month number (1-Jan, ..., 12:Dec)
 
-        Returns: 
+        Returns:
             product_files {tuple list} -- ((year, month), [list of files month])
         """
 
@@ -356,7 +366,7 @@ class SIRALProductCatalog(object):
     @property
     def nc_files(self):
         """Lists all netcdf files (*.nc) in the repository.
-        
+
         Returns:
             [str] -- list of netcdf files
         """
@@ -428,12 +438,12 @@ class SIRALProductCatalog(object):
     @property
     def is_north(self):
         hemisphere_list = self.hemisphere_list
-        return self.is_single_hemisphere and hemisphere_list[0] == "north" 
+        return self.is_single_hemisphere and hemisphere_list[0] == "north"
 
     @property
     def is_south(self):
         hemisphere_list = self.hemisphere_list
-        return self.is_single_hemisphere and hemisphere_list[0] == "south" 
+        return self.is_single_hemisphere and hemisphere_list[0] == "south"
 
     @property
     def years(self):
@@ -515,7 +525,7 @@ class ProductMetadata(object):
     VALID_PROCESSING_LEVELS = ["l2i", "l2p", "l3c", "l4"]
     VALID_CDM_DATA_LEVEL = ["Trajectory", "Grid"]
     NC_PRODUCT_ATTRIBUTES = [
-        "processing_level", "product_version", "cdm_data_level", "platform", 
+        "processing_level", "product_version", "cdm_data_level", "platform",
         "time_coverage_start", "time_coverage_end", "product_timeliness",
         "time_coverage_duration", "source_mission_id", "source_hemisphere",
         "geospatial_lat_min", "geospatial_lat_max",
@@ -526,10 +536,10 @@ class ProductMetadata(object):
         """
         Arguments:
             local_path {str} -- local path to the product netcdf
-        
+
         Keyword Arguments:
-            target_processing_level {str} -- Target processing level for the product netcdf. Settings 
-                                             a specific processing level will cause an exception in 
+            target_processing_level {str} -- Target processing level for the product netcdf. Settings
+                                             a specific processing level will cause an exception in
                                              the case of a mismatch (default: {None})
         """
         self.path = path
@@ -571,7 +581,7 @@ class ProductMetadata(object):
 
     def has_coverage(self, dt):
         """Test if datetime object is covered by product time coverage
-        
+
         Arguments:
             dt {datetime} -- A datetime object that will be tested for coverage
 
@@ -582,7 +592,7 @@ class ProductMetadata(object):
 
     def has_overlap(self, tcs, tce):
         """Test if product has overlap with period defined by start & end datetime
-        
+
         Arguments:
             tcs {datetime} -- A datetime object that defines start of time coverage test
             tce {datetime} -- A datetime object that defines end of time coverage test
@@ -619,15 +629,15 @@ class ProductMetadata(object):
         return d
 
     def _validate_proc_lvl(self, value):
-        """Validates the processing level str from the netcdf file: a) only save the id and 
+        """Validates the processing level str from the netcdf file: a) only save the id and
         not any potential description
-        
+
         Arguments:
             value {str} -- The attribute value from the product netcdf
-        
+
         Raises:
-            ValueError -- if mismatch between processing level in the product and the target level 
-        
+            ValueError -- if mismatch between processing level in the product and the target level
+
         Returns:
             [str] -- The validated processing level id string
         """
@@ -635,7 +645,7 @@ class ProductMetadata(object):
         # Make sure the value for processing level is only the id
         # search for the occurrence of all valid processing levels in the processing_level attribute
         pl_match = [pl in str(value).lower() for pl in self.VALID_PROCESSING_LEVELS]
-        try: 
+        try:
             index = pl_match.index(True)
 
         # NOTE: if the processing_level attribute does not exist, there is no choice but to trust the repo
@@ -659,11 +669,11 @@ class ProductMetadata(object):
     @property
     def id(self):
         """Generates an id string for the product.
-        
+
         Returns:
             [str] -- id str of the product
         """
-        
+
         identifier = (
             self.processing_level, str(self.platform),
             self.period_id, self.unique_str)
